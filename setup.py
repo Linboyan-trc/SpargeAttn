@@ -12,7 +12,7 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 # 1. 支持的GPU有Ampere:8.0 A100, 8.6 RTX 3090, RTX 3080, 8.7
 # 1. 支持的GPU有Ada:8.9 RTX 4090, RTX 4080
 # 1. 支持的GPU有Hopper:9.0 H100
-SUPPORTED_ARCHS = {"8.0", "8.6", "8.7", "8.9", "9.0"}
+SUPPORTED_ARCHS = {"9.0"}
 
 HAS_SM90 = False
 
@@ -38,8 +38,7 @@ NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={ABI}"]
 # 1.1 查看CUDA_HOME位置
 # 1.1 就是CUDA Toolkit的位置，在安装torch库的时候会自动找本地CUDA Toolkit的位置并记录下来
 if CUDA_HOME is None:
-    raise RuntimeError(
-        "Cannot find CUDA_HOME. CUDA must be available to build the package.")
+    raise RuntimeError("Cannot find CUDA_HOME. CUDA must be available to build the package.")
 
 # 1.2 获取需要支持的GPU SM_XX架构
 # 1.2.1 需要在运行前手动设置环境变量，也就是`TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9+PTX" python setup.py install`
@@ -167,15 +166,8 @@ def get_instantiations(src_dir: str):
         if path.is_file() and path.suffix == ".cu"
     ]
 
-run_instantiations("csrc/qattn/instantiations_sm80")
-run_instantiations("csrc/qattn/instantiations_sm89")
 run_instantiations("csrc/qattn/instantiations_sm90")
-
-sources = [ "csrc/qattn/pybind.cpp",
-            "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
-            "csrc/qattn/qk_int_sv_f8_cuda_sm89.cu",] 
-sources += get_instantiations("csrc/qattn/instantiations_sm80")
-sources += get_instantiations("csrc/qattn/instantiations_sm89")
+sources = [ "csrc/qattn/pybind.cpp"] 
 if HAS_SM90:
     sources += ["csrc/qattn/qk_int_sv_f8_cuda_sm90.cu", ]
     sources += get_instantiations("csrc/qattn/instantiations_sm90")
