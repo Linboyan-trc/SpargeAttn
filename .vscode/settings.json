@@ -1,0 +1,12 @@
+{
+    "files.exclude": {
+        "assets": true,
+        "tools": true,
+        ".gitignore": true,
+        "LICENSE": true,
+        "requirements.txt": true,
+
+        "**/**sm80**":true,
+        "**/**sm89**":true,
+    },
+}
