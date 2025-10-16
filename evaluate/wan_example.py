@@ -44,7 +44,6 @@ EXAMPLE_PROMPT = {
     },
 }
 
-
 def _validate_args(args):
     # Basic check
     assert args.ckpt_dir is not None, "Please specify the checkpoint directory."
@@ -75,7 +74,19 @@ def _validate_args(args):
         args.
         task], f"Unsupport size {args.size} for task {args.task}, supported sizes are: {', '.join(SUPPORTED_SIZES[args.task])}"
 
+def _init_logging(rank):
+    # logging
+    if rank == 0:
+        # set format
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s] %(levelname)s: %(message)s",
+            handlers=[logging.StreamHandler(stream=sys.stdout)])
+    else:
+        logging.basicConfig(level=logging.ERROR)
 
+####################################################################################################
+# 1. 解析参数
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Generate a image or video from a text prompt or image using Wan"
@@ -223,30 +234,20 @@ def _parse_args():
 
     return args
 
-
-def _init_logging(rank):
-    # logging
-    if rank == 0:
-        # set format
-        logging.basicConfig(
-            level=logging.INFO,
-            format="[%(asctime)s] %(levelname)s: %(message)s",
-            handlers=[logging.StreamHandler(stream=sys.stdout)])
-    else:
-        logging.basicConfig(level=logging.ERROR)
-
-
+# 2. 调优或推理
 def generate(args):
+    # 2.1 并行调优/推理，暂不涉及
     rank = int(os.getenv("RANK", 0))
     world_size = int(os.getenv("WORLD_SIZE", 1))
     local_rank = int(os.getenv("LOCAL_RANK", 0))
     device = local_rank
     _init_logging(rank)
 
+    # 2.2 环境设置
+    # 2.2.1 单卡时args.offload_model为True
     if args.offload_model is None:
         args.offload_model = False if world_size > 1 else True
-        logging.info(
-            f"offload_model is not specified, set to {args.offload_model}.")
+        logging.info(f"offload_model is not specified, set to {args.offload_model}.")
     if world_size > 1:
         torch.cuda.set_device(local_rank)
         dist.init_process_group(
@@ -261,7 +262,6 @@ def generate(args):
         assert not (
             args.ulysses_size > 1 or args.ring_size > 1
         ), f"context parallel are not supported in non-distributed environments."
-
     if args.ulysses_size > 1 or args.ring_size > 1:
         assert args.ulysses_size * args.ring_size == world_size, f"The number of ulysses_size and ring_size should be equal to the world size."
         from xfuser.core.distributed import (initialize_model_parallel,
@@ -274,7 +274,6 @@ def generate(args):
             ring_degree=args.ring_size,
             ulysses_degree=args.ulysses_size,
         )
-
 
     cfg = WAN_CONFIGS[args.task]
     if args.ulysses_size > 1:
@@ -298,8 +297,9 @@ def generate(args):
         prompt = open(args.prompt[0], 'r').readlines()
         args.prompt = [i.strip() for i in prompt]
 
-    
+    # 3. 推理    
     if "t2v" in args.task or "t2i" in args.task:
+        # 3.1 创建推理实例
         logging.info("Creating WanT2V pipeline.")
         wan_t2v = wan.WanT2V(
             config=cfg,
@@ -312,14 +312,26 @@ def generate(args):
             t5_cpu=args.t5_cpu,
         )
         
+        # 3.2 使用稀疏注意力
         if args.use_spas_sage_attn:
-            set_spas_sage_attn_wan(wan_t2v.model, verbose=args.verbose, l1=args.l1, pv_l1=args.pv_l1, tune_pv=args.tune_pv)
+            # 3.3 将完全注意力计算替换为稀疏注意力计算，如果是调优的话会同时计算好稀疏注意力超参数
+            set_spas_sage_attn_wan(
+                wan_t2v.model, 
+                verbose=args.verbose, 
+                l1=args.l1, 
+                pv_l1=args.pv_l1, 
+                tune_pv=args.tune_pv
+            )
+
+            # 3.4 如果不是调优的话set_spas_sage_attn_wan()没有计算好稀疏注意力超参数，需要加载现成的稀疏注意力超参数
             if not args.tune:
                 saved_state_dict = torch.load(args.model_out_path)
                 load_sparse_attention_state_dict(wan_t2v.model, saved_state_dict)
 
+        # 3.5 开始推理
         logging.info(f"Generating {'image' if 't2i' in args.task else 'video'} ...")
         for prompt in tqdm(args.prompt, desc='prompt precess'):
+            # 3.6 生成视频
             video = wan_t2v.generate(
                 prompt,
                 size=SIZE_CONFIGS[args.size],
@@ -331,7 +343,10 @@ def generate(args):
                 seed=args.base_seed,
                 offload_model=args.offload_model
             )
+
+            # 3.7 主进程保存结果
             if rank == 0:
+                # 3.8 生成结果的文件名和待会要保存的路径
                 os.makedirs(args.out_path, exist_ok=True)
                 formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S")
                 formatted_prompt = prompt.replace(" ", "_").replace("/", "_")[:50]
@@ -339,6 +354,7 @@ def generate(args):
                 args.save_file = f"{args.task}_{args.size.replace('*','x') if sys.platform=='win32' else args.size}_{args.ulysses_size}_{args.ring_size}_{formatted_prompt}_{formatted_time}" + suffix
                 args.save_file = os.path.join(args.out_path, args.save_file)
 
+                # 3.9 对于生成图片，将生成的图片保存为文件
                 if "t2i" in args.task:
                     logging.info(f"Saving generated image to {args.save_file}")
                     cache_image(
@@ -347,6 +363,8 @@ def generate(args):
                         nrow=1,
                         normalize=True,
                         value_range=(-1, 1))
+                    
+                # 3.10 对于生成视频，将生成的视频保存为文件
                 else:
                     logging.info(f"Saving generated video to {args.save_file}")
                     cache_video(
@@ -357,6 +375,7 @@ def generate(args):
                         normalize=True,
                         value_range=(-1, 1))
         
+        # 3.11 对于调优，之前仅仅是利用调优参数，最后推理并保存完视频之后还要保存一下调优的参数
         if args.use_spas_sage_attn and args.tune:
             saved_state_dict = extract_sparse_attention_state_dict(wan_t2v.model)
             torch.save(saved_state_dict, args.model_out_path)
@@ -437,8 +456,9 @@ def generate(args):
             
     logging.info("Finished.")
 
-
+####################################################################################################
 if __name__ == "__main__":
+    # 1. 解析参数
     args = _parse_args()
 
     if args.parallel_tune:

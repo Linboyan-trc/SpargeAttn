@@ -1,18 +1,3 @@
-"""
-Copyright (c) 2025 by SpargeAttn team.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
 
 import torch
 import torch.nn as nn
@@ -36,7 +21,6 @@ def extract_sparse_attention_state_dict(model, verbose=False):
                     saved_state_dict[model_key] = model_param
     return saved_state_dict
 
-
 def load_sparse_attention_state_dict(model, saved_state_dict, multigpu=False, verbose=False):
     if not multigpu:
         device = next(model.parameters()).device
@@ -57,7 +41,6 @@ def load_sparse_attention_state_dict(model, saved_state_dict, multigpu=False, ve
         model = model.to(device)
     return model
 
-
 def partition_points_into_line(points, block_size, min_dim1=-1, max_dim1=1):
     blocks = {}
     for point in points:
@@ -71,10 +54,10 @@ def partition_points_into_line(points, block_size, min_dim1=-1, max_dim1=1):
         blocks[key].append(point)
     return blocks
 
-# 
 from tools.gpu_process import GPUProcessPoolExecutor
 executor = GPUProcessPoolExecutor()
 
+# 1. 稀疏注意力
 class SparseAttentionMeansim(nn.Module):
     def __init__(self, sim_rule="l1", l1=0.07, pv_l1=0.08, cos_sim=0.98, rmse=0.07, rearrange_kwargs={}, tune_pv=True):
         super(SparseAttentionMeansim, self).__init__()
@@ -282,6 +265,7 @@ class SparseAttentionMeansim(nn.Module):
             self.cdfthreshd[head_idx] = 1
             self.simthreshd1[head_idx] = 1
         
+    # 1. 稀疏注意力计算
     @torch.no_grad()
     def forward(
         self,
@@ -296,15 +280,24 @@ class SparseAttentionMeansim(nn.Module):
         smooth_k=True,
         return_sparsity=False,
     ):
+        # 1.1 Q的形状为[1, 12, 32760, 128]
+        # 1.1 Q的形状为[B, H,  L,     D]
+        # 1.1 B是batch大小，也就是prompt数量，H是注意力头数量，L是token数量，D是每个头的维度为128维
         assert len(q.shape) == 4, "q should be 4-d tensor with B, H, L, D"
             
+        # 1.2 生成超参数
         if os.environ.get("TUNE_MODE", "") != "" or tune_mode:
+            # 1.2.1 格式转换为[1, 12, 32760, 128]
             if tensor_layout == 'NHD':
                 q = rearrange(q, '... L H D -> ... H L D')
                 k = rearrange(k, '... L H D -> ... H L D')
                 v = rearrange(v, '... L H D -> ... H L D')
-            if self.is_sparse is None:  # init per head hyper parameters
+
+            # 1.2.2 初始化每个头的稀疏超参数
+            if self.is_sparse is None: 
                 self.init_hyperparams(q.shape[1], q.device)
+
+            # 1.2.3 串行调优
             if os.environ.get('PARALLEL_TUNE', '') == '':
                 for i in tqdm(range(self.head_num)):
                     if not self.is_sparse[i].item():
@@ -312,6 +305,8 @@ class SparseAttentionMeansim(nn.Module):
                     qi, ki, vi = q[:, i : i + 1], k[:, i : i + 1], v[:, i : i + 1]
                     rtdict = self.autotune(qi, ki, vi, head_idx=i, mask=mask, is_causal=is_causal, smooth_k=smooth_k)
                     self.fill_results(rtdict)
+            
+            # 1.2.4 串行调优
             else:
                 futures = []
                 for i in range(self.head_num):
@@ -336,6 +331,8 @@ class SparseAttentionMeansim(nn.Module):
             if tensor_layout == 'NHD':
                 o = rearrange(o, '... H L D -> ... L H D')
             torch.cuda.empty_cache()
+        
+        # 1.3 稀疏注意力计算
         else:
             assert self.cdfthreshd is not None, "attention hyperparameters should be tuned first"
             kernel = self.kernel_selection()
@@ -355,6 +352,7 @@ class SparseAttentionMeansim(nn.Module):
                 attention_sink= True,  # Only keep True when inference !!!!
             )
         
+        # 1.4 注意力输出，得到的是12个头拼起来的最终的注意力输出
         if return_sparsity:
             o, total_sparsity = o
             return o, total_sparsity
