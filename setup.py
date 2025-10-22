@@ -14,7 +14,7 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 # 1. 支持的GPU有Hopper:9.0 H100
 SUPPORTED_ARCHS = {"9.0"}
 
-HAS_SM90 = False
+HAS_SM90 = True
 
 ####################################################################################################
 # 1. CXX_FLAGS, NVCC_FLAGS
@@ -166,7 +166,10 @@ def get_instantiations(src_dir: str):
         if path.is_file() and path.suffix == ".cu"
     ]
 
+# 3. 运行csrc/qattn/instantiations_sm90/autogen.py，生成72个.cu文件
 run_instantiations("csrc/qattn/instantiations_sm90")
+
+# 4. 最终sources包含: qattn下的pybind.cpp, qk_int_sv_f8_cuda_sm90.cu, 和生成的72个.cu文件
 sources = [ "csrc/qattn/pybind.cpp"] 
 if HAS_SM90:
     sources += ["csrc/qattn/qk_int_sv_f8_cuda_sm90.cu", ]
