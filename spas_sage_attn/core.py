@@ -131,6 +131,7 @@ def block_sparse_sage2_attn_cuda(q, k, v, mask_id=None, dropout_p=0.0, scale=Non
 
 @torch.compiler.disable
 def spas_sage2_attn_meansim_cuda(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, smooth_k=True, simthreshd1=0.6, cdfthreshd=0.98, pvthreshd=50, attention_sink=False, tensor_layout="HND", output_dtype=torch.float16, return_sparsity=False):
+    # 1. 调整q, k, v形状
     assert tensor_layout in ['HND', 'NHD']
     if tensor_layout == 'NHD':
         q, k, v = map(lambda t: rearrange(t, '... L H D -> ... H L D'), (q, k, v))
@@ -143,11 +144,23 @@ def spas_sage2_attn_meansim_cuda(q, k, v, attn_mask=None, dropout_p=0.0, is_caus
     else:
         q, k, v = q.contiguous().to(torch.bfloat16), k.contiguous().to(torch.bfloat16), v.contiguous().to(torch.float16)
 
+    # 2. km.shape = [1, 12, 1, 128]
+    # 2. headdim = 128
     if smooth_k:
         km = k.mean(dim=-2, keepdim=True)
         # k = k - km
     headdim = q.size(-1)
 
+    # 3. 传入: q.shape = [1, 12, 32760, 128]
+    # 3. 传入: k.shape = [1, 12, 32760, 128]
+    # 3. 传入: km.shape = [1, 12, 1, 128]
+    
+    # 3. 得到: lut.shape = [1, 12, 256, 512]
+    # 3. 得到: valid_block_num.shape = [1, 12, 256]
+    # 3. 得到: q_int8.shape = [1, 12, 32760, 128]
+    # 3. 得到: q_scale.shape = [1, 12, 256]
+    # 3. 得到: k_int8.shape = [1, 12, 32760, 128]
+    # 3. 得到: k_scale.shape = [1, 12, 512]
     lut, valid_block_num, q_int8, q_scale, k_int8, k_scale = get_block_map_meansim_fuse_quant(q, k, km, is_causal=is_causal, simthreshd1=simthreshd1, cdfthreshd=cdfthreshd, return_lut=True, attention_sink=attention_sink)  # 
 
     if scale is None:

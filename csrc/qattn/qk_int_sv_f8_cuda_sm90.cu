@@ -209,6 +209,7 @@ torch::Tensor qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_wi
                     float sm_scale,
                     int return_pv_count)
 {
+  // 1. 检查各个张量位于CUDA上
   CHECK_CUDA(query);
   CHECK_CUDA(key);
   CHECK_CUDA(value);
@@ -241,6 +242,7 @@ torch::Tensor qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_wi
   CHECK_DTYPE(key_scale, at::ScalarType::Float);
   CHECK_DTYPE(value_scale, at::ScalarType::Float);
 
+  // 2. 检查形状
   CHECK_DIMS(query, 4);
   CHECK_DIMS(key, 4);
   CHECK_DIMS(value, 4);
@@ -252,6 +254,7 @@ torch::Tensor qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_wi
   CHECK_DIMS(key_scale, 3);
   CHECK_DIMS(value_scale, 3);
 
+  // 3. 获取batch_size, 为1; 获取head_dim, 为128
   const int batch_size = query.size(0);
   const int head_dim = query.size(3);
 

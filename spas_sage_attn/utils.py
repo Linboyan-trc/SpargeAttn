@@ -1,19 +1,3 @@
-"""
-Copyright (c) 2025 by SpargeAttn team.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
-
 import torch
 import torch.nn.functional as F
 from einops import rearrange, repeat
@@ -268,8 +252,13 @@ def get_vanilla_qk_quant(q, k, km=None, BLKQ=128, BLKK=64):
     return q_int8, q_scale, k_int8, k_scale
 
 def get_pool_sim_triton_simmean_fuse_quant(x, x_mean, block_size, simthreshd1):
+    # 1. x.shape = q.shape = [1, 12, 32760, 128]
     x = x.contiguous()
+
+    # 2, B, H, N, D = 1, 12, 32760, 128
     B, H, N, D = x.shape
+
+    # 3. nblock = (32760 + 128 - 1) // 128 = 256
     nblock = (N + block_size - 1) // block_size  # Number of blocks per feature map
     pool = torch.empty((B, H, nblock, D), device=x.device, dtype=x.dtype)
     sim_blocks = torch.empty((B, H, nblock), device=x.device, dtype=torch.bool)
@@ -358,7 +347,10 @@ def get_block_map_meansim(q, k, is_causal=False, BLKQ=128, BLKK=64, simthreshd1=
         lut, valid_block_num = block_map_lut_triton(final_map)
         return lut, valid_block_num
 
-def get_block_map_meansim_fuse_quant(q, k, km=None, is_causal=False, BLKQ=128, BLKK=64, simthreshd1=0.1, cdfthreshd=0.9, is_sparse=True, return_lut=False, attention_sink=False):
+def get_block_map_meansim_fuse_quant(q, k, km=None, is_causal=False, BLKQ=64, BLKK=128, simthreshd1=0.1, cdfthreshd=0.9, is_sparse=True, return_lut=False, attention_sink=False):
+    # 1. q.shape = [1, 12, 32760, 128]
+    # 1. k.shape = [1, 12, 32760, 128]
+    # 1. Headnum = 12
     Headnum = q.size(1)
     simthreshd1 = hyperparameter_check(simthreshd1, Headnum, q.device)
     cdfthreshd = hyperparameter_check(cdfthreshd, Headnum, q.device)
