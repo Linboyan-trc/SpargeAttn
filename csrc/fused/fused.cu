@@ -245,7 +245,7 @@ void transpose_pad_permute_cuda(
     stride_h_output = output.stride(1);
 
     // padded_num_tokens = ()
-    padded_num_tokens = (num_tokens + CTA_SIZE - 1) / CTA_SIZE * CTA_SIZE;
+    padded_num_tokens = (num_tokens + 127 - 1) / 128 * 128;
     CHECK_SHAPE(output, batch_size, num_heads, head_dim, padded_num_tokens);
   }
 
