@@ -140,8 +140,8 @@ void qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_sm90(
     DISPATCH_CAUSAL(is_causal, IS_CAUSAL, {
       DISPATCH_QK_QUANT_GRAN(qk_quant_gran, QK_QUANT_GRAN, {
         DISPATCH_PYTORCH_DTYPE_TO_CTYPE_FP16(output_dtype, DTypeOut, {
-          constexpr int CTA_Q = 64;
-          constexpr int CTA_K = 128;
+          constexpr int CTA_Q = 128;
+          constexpr int CTA_K = 64;
           constexpr int NUM_THREADS = 128;
 
           assert(padded_kv_len >= div_ceil(kv_len, CTA_K) * CTA_K);
