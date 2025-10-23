@@ -172,7 +172,7 @@ def spas_sage2_attn_meansim_cuda(q, k, v, attn_mask=None, dropout_p=0.0, is_caus
 
     ## quant v
     b, h_kv, kv_len, head_dim = v.shape
-    padded_len = (kv_len + 63) // 64 * 64
+    padded_len = (kv_len + 127) // 128 * 128
     v_transposed_permutted = torch.empty((b, h_kv, head_dim, padded_len), dtype=v.dtype, device=v.device)
     fused.transpose_pad_permute_cuda(v, v_transposed_permutted, 1)
     v_fp8 = torch.empty(v_transposed_permutted.shape, dtype=torch.float8_e4m3fn, device=v.device)

@@ -263,6 +263,7 @@ torch::Tensor qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_wi
   int stride_bz_v = value.stride(0);
   int stride_bz_o = output.stride(0);
 
+  // 4. padded_kv_len = 
   int qo_len, kv_len, num_qo_heads, num_kv_heads;
   int padded_kv_len = value.size(3);
   int stride_seq_q, stride_h_q, stride_seq_k, stride_h_k, stride_h_v, stride_d_v, stride_seq_o, stride_h_o;
@@ -292,8 +293,10 @@ torch::Tensor qk_int8_sv_f8_accum_f32_block_sparse_attn_inst_buf_fuse_v_scale_wi
   }
   else
   {
+    // 5. qo_len, kv_len = 32760
     qo_len = query.size(2);
     kv_len = key.size(2);
+
     num_qo_heads = query.size(1);
     num_kv_heads = key.size(1);
 
