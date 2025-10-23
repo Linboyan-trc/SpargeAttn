@@ -206,7 +206,7 @@ void transpose_pad_permute_cuda(
   CHECK_DIMS(input, 4);
   CHECK_DIMS(output, 4);
 
-  constexpr int CTA_SIZE = 64;
+  constexpr int CTA_SIZE = 128;
 
   // batch_size = 1
   // head_dim = 128

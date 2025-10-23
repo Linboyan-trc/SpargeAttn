@@ -347,7 +347,7 @@ def get_block_map_meansim(q, k, is_causal=False, BLKQ=128, BLKK=64, simthreshd1=
         lut, valid_block_num = block_map_lut_triton(final_map)
         return lut, valid_block_num
 
-def get_block_map_meansim_fuse_quant(q, k, km=None, is_causal=False, BLKQ=128, BLKK=64, simthreshd1=0.1, cdfthreshd=0.9, is_sparse=True, return_lut=False, attention_sink=False):
+def get_block_map_meansim_fuse_quant(q, k, km=None, is_causal=False, BLKQ=64, BLKK=128, simthreshd1=0.1, cdfthreshd=0.9, is_sparse=True, return_lut=False, attention_sink=False):
     # 1. q.shape = [1, 12, 32760, 128]
     # 1. k.shape = [1, 12, 32760, 128]
     # 1. Headnum = 12
