@@ -195,6 +195,8 @@ void transpose_pad_permute_cuda(
                 torch::Tensor output,
                 int tensor_layout)
 {
+  //  input.shape = [1, 40, 32130, 128]
+  //  output.shape = [1, 40, 128, 32256]
   CHECK_CUDA(input);
   CHECK_CUDA(output);
 
@@ -206,6 +208,8 @@ void transpose_pad_permute_cuda(
 
   constexpr int CTA_SIZE = 64;
 
+  // batch_size = 1
+  // head_dim = 128
   const int batch_size = input.size(0);
   const int head_dim = input.size(3);
 
@@ -230,13 +234,17 @@ void transpose_pad_permute_cuda(
   }
   else
   {
+    // num_tokens = 32130
     num_tokens = input.size(2);
+
+    // num_heads = 40
     num_heads = input.size(1);
     stride_seq_input = input.stride(2);
     stride_h_input = input.stride(1);
     stride_d_output = output.stride(2);
     stride_h_output = output.stride(1);
 
+    // padded_num_tokens = ()
     padded_num_tokens = (num_tokens + CTA_SIZE - 1) / CTA_SIZE * CTA_SIZE;
     CHECK_SHAPE(output, batch_size, num_heads, head_dim, padded_num_tokens);
   }
